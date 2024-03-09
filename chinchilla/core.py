@@ -661,7 +661,7 @@ class Chinchilla:
             "beta": self.beta
         }
 
-    def report(self, plot=True) -> None:
+    def report(self, plot: bool=True) -> None:
         """
         Generates a report summarizing the scaling law estimation results.
 
