@@ -411,7 +411,7 @@ class Chinchilla:
 
         Raises:
             ValueError: If any of the following conditions are met:
-                - `num_seeding_steps` is not specified
+                - The scaling law parameters have not been estimated
                 - neither `C` nor `scaling_factor` are specified
                 - both `C` and `scaling_factor` are specified
         """
@@ -640,3 +640,56 @@ class Chinchilla:
             losses = losses * self._const["weights"]
 
         return np.mean(losses)
+
+    def get_params(self) -> dict:
+        """
+        Returns a dictionary of estimated parameters describing the scaling law / parametric loss estimator.
+
+        Returns:
+            float: The computed loss value.
+
+        Raises:
+            ValueError: If the scaling law parameters have not been estimated
+        """
+        if not all(hasattr(self, param) for param in ["alpha", "beta"]):
+            raise ValueError("You must call `fit` before training a model with scaled compute.")
+        return {
+            "E": self.E,
+            "A": self.A,
+            "B": self.B,
+            "alpha": self.alpha,
+            "beta": self.beta
+        }
+
+    def report(self, plot=True) -> None:
+        """
+        Generates a report summarizing the scaling law estimation results.
+
+        The report includes:
+        - Estimated scaling law parameters (E, A, B, alpha, beta)
+        - Goodness of fit with regards to specified loss function
+        - Plots of the actual vs. predicted losses
+        - Suggested compute allocation for the next model based on the scaling law
+
+        Raises:
+            ValueError: If the scaling law parameters have not been estimated yet.
+        """
+        if not all(hasattr(self, param) for param in ["alpha", "beta"]):
+            raise ValueError("You must call `fit` before generating a report.")
+
+        self.logger.info("Estimated scaling law parameters:")
+        for param, value in self.get_params().items():
+            self.logger.info(f"    - {param}: {value}")
+        if len(self.database.df):
+            self.logger.info("Goodness of fit:")
+            y_true = self.database.df.loss.values
+            y_pred = self.predict_loss(self.database.df.N.values, self.database.df.D.values)
+            weights = 1.0
+            if self.weight_fn:
+                weights = self.weight_fn(self.database.df.C.values.astype(DTYPE))
+                weights /= weights.mean()
+            loss = (self.loss_fn(y_true, y_pred) * weights).mean()
+            self.logger.info(f"    - `{self.loss_fn.__name__}`: {loss:.8f}")
+            if plot:
+                self.logger.info("Landscape visualization:")
+                self.plot()
