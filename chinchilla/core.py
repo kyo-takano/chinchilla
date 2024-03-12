@@ -191,6 +191,10 @@ class Chinchilla:
 
     def _create_shortcuts(self) -> None:
         """Sets up shortcut methods."""
+        # Bypass instance methods to class methods; override the class method once constructed
+        self.allocate_compute = lambda C: Chinchilla.allocate_compute(C, self.get_params())
+        self.predict_loss = lambda N, D: Chinchilla.predict_loss(N, D, self.get_params())
+
         # Submodules; consult each class for what it does
         self.append = self.database.append
         self.plot = lambda *args, **kwargs: self.visualizer.plot(self, *args, **kwargs)
@@ -248,7 +252,6 @@ class Chinchilla:
         self.logger.debug(f"[{ordinal(len(self.database.df)+1)}]\t{C:.2e} FLOPs => {N:.2e} params * {D:.2e} samples")
 
         return (N, D), model_config
-        # return dict(N=N, D=D, model_config=model_config)
 
     def fit(self, parallel: bool = True, simulation: bool = False) -> None:
         """
@@ -554,45 +557,117 @@ class Chinchilla:
         self.logger.debug(f"Adjusted D to N: {D=:.1f} | {N=}")
         return D
 
-    def allocate_compute(self, C: float | list | np.ndarray) -> tuple[float, float] | np.ndarray:
+    @classmethod
+    def allocate_compute(cls, C: float | list | np.ndarray, params: dict) -> tuple[float, float] | np.ndarray:
         r"""
-        Allocates a given computational budget (C) to the optimal number of model parameters (N) and data samples (D):
+        Allocates a given computational budget (C) to the optimal number of model parameters (N) and data samples (D),
+        which wouls satisfy the following formula based on the scaling law parameters provided in the `params` dictionary.
 
         $$\underset{N,\ D}{argmin}\ L(N,\ D\ |\ E,\ A,\ B,\ \alpha,\ \beta)$$
 
+        Once instantiated, this class method gets overridden by `__allocate_compute` so that `params` are
+        automatically specified from the instance attributes.
+
+        > **Example Usages**:
+        > 1. As a class method
+        > ```python
+        > params = {
+        >     "E":      1.620406544125793,
+        >     "A":      1116.7583712076722171,
+        >     "B":      92697.423904473161286,
+        >     "alpha":  0.6491512524478403,
+        >     "beta":   0.7105431526502198,
+        > }
+        > N, D = Chinchilla.allocate_compute(1e18, params)
+        > ```
+        >
+        > 2. As an instance method
+        > ```python
+        > cc = Chinchilla(...)
+        > cc.fit()  # internally or explicitly
+        > N, D = cc.allocate_compute(np.logspace(18, 21))
+        > ```
+
         Args:
-            C (float): The computational budget in FLOPs.
+            C (float | list | np.ndarray): The computational budget in FLOPs. Can be a single value or an array.
+            params (dict): A dictionary containing the scaling law parameters (alpha, beta, A, B).
 
         Returns:
-            tuple[float, float]: A tuple containing the optimal number of model parameters (N) and data samples (D).
+            tuple[float, float] | np.ndarray: A tuple containing the optimal number of model parameters (N) and
+            data samples (D). If C is an array, the output will be a 2D array with shape (len(C), 2).
 
         Raises:
-            ValueError: If C is not a positive number.
+            ValueError: If `params` is missing any of the required parameters (alpha, beta, A, B).
         """
-        alpha_beta = self.alpha + self.beta
+        required_params = ["alpha", "beta", "A", "B"]
+        if not all(param in params for param in required_params):
+            raise ValueError(f"Missing required parameters. Expected: {required_params}")
+        alpha, beta, A, B = [params[param] for param in required_params]
 
-        self.G = np.power((self.alpha * self.A) / (self.beta * self.B), (1 / alpha_beta))
-        self._a, self._b = self.beta / alpha_beta, self.alpha / alpha_beta
+        alpha_beta = alpha + beta
+        G = np.power((alpha * A) / (beta * B), (1 / alpha_beta))
+        _a, _b = beta / alpha_beta, alpha / alpha_beta
 
-        N_opt = self.G * np.power(C / 6, self._a)
-        D_opt = (1 / self.G) * np.power(C / 6, self._b)
+        N_opt = G * np.power(C / 6, _a)
+        D_opt = (1 / G) * np.power(C / 6, _b)
 
         return N_opt, D_opt
 
-    def predict_loss(self, N: np.ndarray | float, D: np.ndarray | float) -> np.ndarray | float:
-        """
-        Predicts the loss for given allocations of model parameters (N) and data samples (D).
+    @classmethod
+    def predict_loss(cls, N: np.ndarray | float, D: np.ndarray | float, params: dict) -> np.ndarray | float:
+        r"""
+        Predicts the loss for given allocations of model parameters (N) and data samples (D) using the scaling law
+        parameters provided in the `params` dictionary.
+
+        The loss is calculated based on the following formula:
+        $$L(N,\ D\ |\ E,\ A,\ B,\ \alpha,\ \beta) = E + A \cdot N^{-\alpha} + B \cdot D^{-\beta}$$
+
+        Once instantiated, this class method gets overridden by `__predict_loss` so that `params` are
+        automatically specified from the instance attributes.
+
+        > **Example Usages**:
+        > 1. As a class method
+        > ```python
+        > params = {
+        >     "E":      1.620406544125793,
+        >     "A":      1116.7583712076722171,
+        >     "B":      92697.423904473161286,
+        >     "alpha":  0.6491512524478403,
+        >     "beta":   0.7105431526502198,
+        > }
+        > N, D = 1e9, 1e6
+        > loss = Chinchilla.predict_loss(N, D, params)
+        > ```
+        >
+        > 2. As an instance method
+        > ```python
+        > cc = Chinchilla(...)
+        > cc.fit()  # internally or explicitly
+        > N, D = np.array([1e9, 1e10]), np.array([1e6, 1e7])
+        > loss = cc.predict_loss(N, D)
+        > ```
 
         Args:
             N (np.ndarray | float): The number of model parameters or an array of such numbers.
             D (np.ndarray | float): The number of data samples or an array of such numbers.
+            params (dict): A dictionary containing the scaling law parameters (E, A, B, alpha, beta).
 
         Returns:
-            *np.ndarray | float*: The predicted loss or an array of predicted losses.
+            np.ndarray | float: The predicted loss or an array of predicted losses.
+
+        Raises:
+            ValueError: If `params` is missing any of the required parameters (E, A, B, alpha, beta).
         """
-        log_term_2nd = np.log(self.A) - self.alpha * np.log(N)  # log (already done) -> sum exp
-        log_term_3rd = np.log(self.B) - self.beta * np.log(D)
-        return self.E + np.exp(log_term_2nd) + np.exp(log_term_3rd)
+        required_params = ["E", "A", "B", "alpha", "beta"]
+        if not all(param in params for param in required_params):
+            raise ValueError(f"Missing required parameters. Expected: {required_params}")
+
+        E, A, B, alpha, beta = [params[param] for param in required_params]
+
+        log_term_2nd = np.log(A) - alpha * np.log(N)
+        log_term_3rd = np.log(B) - beta * np.log(D)
+
+        return E + np.exp(log_term_2nd) + np.exp(log_term_3rd)
 
     def _evaluate_params(self, x) -> np.ndarray:
         """
@@ -649,19 +724,13 @@ class Chinchilla:
             float: The computed loss value.
 
         Raises:
-            ValueError: If the scaling law parameters have not been estimated
+            ValueError: If the scaling law parameters have not been set as attributes.
         """
-        if not all(hasattr(self, param) for param in ["alpha", "beta"]):
+        if not all(hasattr(self, param) for param in ["E", "A", "B", "alpha", "beta"]):
             raise ValueError("You must call `fit` before training a model with scaled compute.")
-        return {
-            "E": self.E,
-            "A": self.A,
-            "B": self.B,
-            "alpha": self.alpha,
-            "beta": self.beta
-        }
+        return {"E": self.E, "A": self.A, "B": self.B, "alpha": self.alpha, "beta": self.beta}
 
-    def report(self, plot: bool=True) -> None:
+    def report(self, plot: bool = True) -> None:
         """
         Generates a report summarizing the scaling law estimation results.
 
