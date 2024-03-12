@@ -7,7 +7,7 @@ packages = ["chinchilla"]
 
 [project]
 name = 'chinchilla'
-version = "0.1.1"
+version = "0.1.2"
 description = "A toolkit for scaling law research"
 authors = [{ name = 'Kyo Takano', email = 'kyo.takano@mentalese.co' }]
 urls = {Homepage = "https://github.com/kyo-takano/chinchilla"}
