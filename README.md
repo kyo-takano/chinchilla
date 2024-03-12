@@ -172,7 +172,7 @@ Please see [API Reference](https://github.com/kyo-takano/chinchilla/tree/master/
 
 Find a practical application of `chinchilla` in the [`examples`](https://github.com/kyo-takano/chinchilla/tree/master/examples) directory (more to come):
 
-- [Training a .327 ExaFLOPs Rubik's Cube Solver](https://github.com/kyo-takano/chinchilla/blob/master/examples/efficientcube.ipynb)
+- [Training Compute-Optimal Rubik's Cube Solvers](https://github.com/kyo-takano/chinchilla/blob/master/examples/efficientcube.ipynb) (100 PetaFLOPs)
 
 ## Documentation
 
