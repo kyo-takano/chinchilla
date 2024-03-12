@@ -552,7 +552,10 @@ class Chinchilla:
         if not isinstance(N, (int, float)) or N <= 0:
             raise ValueError(f"N must be a positive number, but got {N}")
 
-        D = np.power(self.G, -1 - self._b / self._a) * np.power(N, self._b / self._a)
+        alpha_beta = self.alpha + self.beta
+        G = np.power((self.alpha * self.A) / (self.beta * self.B), (1 / alpha_beta))
+        _a, _b = self.beta / alpha_beta, self.alpha / alpha_beta
+        D = np.power(G, -1 - _b / _a) * np.power(N, _b / _a)
 
         self.logger.debug(f"Adjusted D to N: {D=:.1f} | {N=}")
         return D
