@@ -23,7 +23,7 @@
 </td>
 <tr>
   <td>
-    
+
   **Probably Not For**:
   </td>
   <td>
@@ -155,10 +155,10 @@ cc.simulate(
     num_scaling_steps=1,
     scaling_factor=10.0,
     target_params=dict(
-        E=1.69337368, 
-        A=406.401018, 
-        B=410.722827, 
-        alpha=0.33917084, 
+        E=1.69337368,
+        A=406.401018,
+        B=410.722827,
+        alpha=0.33917084,
         beta=0.2849083
     ),
     # Add exponentially distributed loss averaging at 0.1
@@ -176,7 +176,7 @@ Find a practical application of `chinchilla` in the [`examples`](https://github.
 
 ## Documentation
 
-For detailed API Reference, tips, differences from the original Chinchilla paper, etc., please browse to [./docs](https://github.com/kyo-takano/chinchilla/tree/master/docs).
+For a detailed API Reference, tips, differences from the original Chinchilla paper, etc., please browse to [./docs](https://github.com/kyo-takano/chinchilla/tree/master/docs).
 
 ## Contributing
 
