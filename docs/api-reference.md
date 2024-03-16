@@ -116,7 +116,6 @@ Uses [L-BFGS optimization (SciPy implementation)](https://docs.scipy.org/doc/sci
 
 - `ValueError` - If there are not enough data points to perform the fitting.
 - `TypeError` - If the numerical precision is insufficient for the L-BFGS algorithm.
-- `NotImplementedError` - When you try to use `weight_fn` for the first time; you are supposed to start _hacking_ here.
 
 ### `scale`
 

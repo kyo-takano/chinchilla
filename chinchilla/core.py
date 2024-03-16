@@ -265,7 +265,6 @@ class Chinchilla:
         Raises:
             ValueError: If there are not enough data points to perform the fitting.
             TypeError: If the numerical precision is insufficient for the L-BFGS algorithm.
-            NotImplementedError: When you try to use `weight_fn` for the first time; you are supposed to start _hacking_ here.
         """
         _df = self.database.df.copy()
 
@@ -281,8 +280,10 @@ class Chinchilla:
 
         # Pre-compute the series repeatedly accessed by `self._evaluate_params`
         if self.weight_fn:
-            raise NotImplementedError(
-                "When specifying `weght_fn, you are expected to edit the source code by deleting this error and specify how to compute yourself."
+            # raise NotImplementedError("When specifying `weight_fn`, you are expected to edit the source code by deleting this error and specify how to compute yourself.")
+            self.logger.warning(
+                "`weight_fn` receives `cc.dataframe.df.C` as its default argument. "
+                "If you want to weigh L-BFGS losses by something else, please edit the source code."
             )
             weights = self.weight_fn(_df.C.values.astype(DTYPE))
             weights /= weights.mean()
