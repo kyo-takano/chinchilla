@@ -53,7 +53,7 @@
 - $N$: The number of parameters
 - $D$: The number of data samples
 - $C$: Total compute in FLOPs ($C\approx 6\ ND$)
-- $L(N,\ D) = E + A/N ^ \alpha + B / D ^ \beta$: A loss predictor parameterized by $\{E, A, B, \alpha, \beta\}$ and $C$
+- $L(N,\ D) = E + A/N ^ \alpha + B / D ^ \beta$: A loss predictor parameterized by $\{E, A, B, \alpha\}$ and $\beta$
 
 ### Compute-Optimal Allocation
 
