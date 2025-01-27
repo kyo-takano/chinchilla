@@ -1,81 +1,104 @@
 # Tips / Best Practices
 
-Here are a few tips and best practices for both using `chinchilla` and training large-scale NNs in general.
+Here are a couple of tips and best practices for using `chinchilla`.
 
-## chinchilla-specific
+## 1. Be meticulous with `param_grid`
 
-### 1. Be specific on `param_grid`
+To fit a loss predictor $L(N, D | A, B, \alpha, \beta)$ (`Chinchilla.fit`) based on existing training runs, defining the `param_grid` of initial values is critical.
+The parametric model is sensitive to the initial distribution, and a well-chosen grid can significantly reduce the risk of underfitting or poor convergence.
 
-To fit a loss predictor $L(N, D | A, B, \alpha, \beta)$ (`Chinchilla.fit`) on existing training runs,
-it is crucial to define a `param_grid` of initial values carefully.
-The optimization of these values through L-BFGS aims to align predicted losses $\hat{L_{i}}$ closely with actual losses $L_{i}$, and given the sensitivity of the optimization algorithm, a tiny adjustment of a value in the initialization grid can significantly impact the result.
+### Example: Original Initialization Grid
 
-To mitigate estimation instability:
+<!-- > [!NOTE]
+> This example will also be demonstrated in the example [**Effectively narrowing down the search space**](examples/llm/param_grid.ipynb). -->
 
-- Utilize prior knowledge of expected losses for given $N$ and/or $D$
-- If no clue, inform your parameter grid from seed training runs
+The initialization grid used in the original Chinchilla study looked like this:
 
-Prior knowledge of expected losses for a given $N$ and/or $D$ can guide you in setting realistic upper and lower bounds for these parameters, enhancing the precision of your grid. 
-For example, the cross-entropy loss can go below 1.5 for an LM with 32000 vocabularies.
-Narrowing down the search space like this will allow for more fine-grained exploration and better CPU time allocation.
+> ```python
+> """This grid matches the range used in the original paper."""
+> num_slices = 16   # Resolution increased from 1,500 -> 1,048,576 combinations for a finer sweep
+> cc = Chinchilla(
+>     "./",
+>     param_grid = dict(
+>         e=np.linspace(-1, 1, num_slices),
+>         a=np.linspace(0, 25, num_slices),
+>         b=np.linspace(0, 25, num_slices),
+>         alpha=np.linspace(0, 2, num_slices),
+>         beta=np.linspace(0, 2, num_slices)
+>     )
+>     ...
+> )
+> cc.sweep_param_grid()  # Visualizes the loss landscape for the grid.
+> ```
+>
+> ![Loss landscape of original initialization](imgs/sweep_param_grid.original.png)
 
-### 2. Keep `scaling_factor` moderate
+As seen, the loss landscape has sharp minima, making it difficult to converge to a good optimum unless any of the initial guesses happen to be very close to them. This is an example of ***poor initialization***.
 
-Scaling compute according to the loss predictor involves ***extrapolation*** beyond the FLOPs regime used in fitting the predictor. 
+### Improving Initialization
+
+To address this, you can refine the parameter search space based on existing training data and prior observations. For example:
+
+- Reduce the range for other parameters based on the stability of their behavior.
+
+- Narrow the range for $E$ to a region around the observed minimum loss.
+
+  This by definition sets the **upper bound** for the irreducible error. In the original, the $e=\log(E)$ range corresponds to [0.367879441, 2.71828183] in linear space, which is largely missing the point
+
+Here’s an improved grid based on this strategy:
+
+```python
+param_grid = dict(
+    E=np.linspace(1.4, 2.0774, num_slices), # 2.0774: Observed minimum irreducible error
+    a=np.linspace(1, 10, num_slices),
+    b=np.linspace(1, 10, num_slices),
+    alpha=np.linspace(0.1, 0.7, num_slices),
+    beta=np.linspace(0.1, 0.7, num_slices)
+)
+```
+
+And you get:
+
+![Improved loss landscape](imgs/sweep_param_grid.improved.png)
+
+The minima are smoother and more stable, allowing for easier convergence during optimization.
+
+As a matter of fact, this technique is so effective that even a naive grid search can work almost as good as L-BFGS:
+
+<div style="display: flex; justify-content: center; gap: 1.5rem; align-items: center; font-size: 1.5rem;">
+    <div>
+        <img src="./imgs/algorithm.init-original.png" alt="Original Algorithm">
+    </div>
+    ➡️
+    <div>
+      <img src="./imgs/algorithm.init-improved.png" alt="Improved Algorithm">
+    </div>
+</div>
+
+## 2. Keep `scaling_factor` moderate
+
+Scaling compute according to the loss predictor involves ***extrapolation*** beyond the FLOPs regime used for fitting the predictor.
 To avoid overstepping, it's advisable to:
 
-- Incrementally scale up compute,
-- Progressively update the scaling law, and
-- Aim for a scaling factor around 2.0, dedicating half of your total budget to estimate the scaling law and the other half for the final model.
+- **Incrementally scale compute** rather than making large jumps.
+- ***Continuously update*** the scaling law as a new data point becomes available.
 
-### 3. Beware of "failure modes"
+As a rule of thumb, I would suggest using`scaling_factor=2.0` as a good starting point.
+This approach balances the compute budget by dedicating roughly half of it to scaling law estimation and the other half to final model training.
 
-You may encounter different types of "failures" when fitting the loss predictor, 
-and they often happen when you don't have a good configuration.
+## 3. Beware of "failure modes"
+
+When fitting the loss predictor, several common failure modes may arise. These are often tied to poor configurations, including;
 
 - **Insufficient compute for seed models**
 
-  ![](./imgs/LBFGS--seeds-too-small.png)
+  ![Insufficient compute failure](imgs/optim--seeds-too-small.jpg)
 
-- **Poor fit from L-BFGS optimization**
+- **Underfitting due to poor optimization**
 
-  ![](./imgs/LBFGS--underfit.png)
+  ![Underfitting failure](imgs/optim--underfit.jpg)
 
-## General Training Advice
+---
 
-### Basics
-
-- [Mixed Precision (bf16/fp16)](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html)
-- [Gradient Accumulation](https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-accumulation) if a desired size of batches don't fit on device(s)
-- [Learning rate scheduling](https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
-- A rule of thumb: larger networks often require smaller learning rates to prevent divergence during training
-
-### Hyperparameter Optimization
-
-- [µP/µTransfer](https://github.com/microsoft/mup): Recommended
-- [Optuna](https://optuna.org/), [Hyperopt](https://hyperopt.github.io/hyperopt/), etc.
-
-### GPU
-
-- [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html)
-- [`triton`](https://github.com/openai/triton)
-- You might also want to learn to code custom CUDA kernels
-
-### Distributed Training
-
-- [torch.distributed](https://pytorch.org/tutorials/beginner/dist_overview.html): Recommended if you need more than one GPU and are new to the concept of parallelism.
-- [DeepSpeed](https://www.deepspeed.ai/)
-  - [3D Parallelism](https://www.deepspeed.ai/tutorials/pipeline/)
-  - [ZeRO](https://www.deepspeed.ai/tutorials/zero/)
-- [Zero Bubble](https://github.com/sail-sg/zero-bubble-pipeline-parallelism): SOTA multi-GPU utilization rate
-
-### Transformers / LLM
-
-- [Flash Attention](https://github.com/Dao-AILab/flash-attention)
-- [Megatron-LM](https://github.com/microsoft/Megatron-LM)
-  - [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed)
-- [Mamba](https://github.com/state-spaces/mamba): State-Space Model for LM
-- Depth-to-Width ratio: As the number of parameters $N$ increases, model depth (number of layers) tends to increase as well, with studies such as [Limits to Depth Efficiencies of Self-Attention (Levine, et al., 2020)](https://proceedings.neurips.cc/paper/2020/hash/ff4dfdf5904e920ce52b48c1cef97829-Abstract.html) suggesting this trend continues up to 48 layers. However, shallower and wider models may be preferred in some cases due to their faster runtime achieved through more parallel operations.
-- Batch Size: When resources allow, batch sizes can be scaled up to a million tokens or more, which can lead to more efficient training for large models due to better GPU utilization and reduced communication overhead in distributed settings.
-- For enthusiasts interested in a more hands-on approach, [nanoGPT](https://github.com/karpathy/nanoGPT/) 
-  offers a hackable codebase for experimenting with GPT models.
+> [!NOTE]
+> *The section "General Training Advice" has been removed from this document. In case you still need it, you can find it [here](https://github.com/kyo-takano/chinchilla/blob/3db6ab51a0ceb82855cb66da41f0b8ab663b3857/docs/TIPS.md#general-training-advice)*

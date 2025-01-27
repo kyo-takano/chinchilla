@@ -1,4 +1,5 @@
 """Utility functions."""
+
 from __future__ import annotations  # PEP 604 backport
 
 import itertools

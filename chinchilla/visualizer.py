@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import warnings
 
 from ._logger import get_logger
 
@@ -17,7 +18,7 @@ PADDING = 0.10
 class Visualizer:
     """
     `Visualizer` includes methods for plotting the estimated loss gradient, the efficient frontier,
-    and L-BFGS optimization results. It helps in understanding the distribution and relationships between
+    and BFGS optimization results. It helps in understanding the distribution and relationships between
     compute resources, model parameters, and data samples, and highlights efficient allocation frontiers
     and seed regimes.
 
@@ -55,7 +56,7 @@ class Visualizer:
         with the loss function and highlights efficient allocation frontiers and seed regimes.
 
         **Example output**:
-        ![](../examples/efficientcube-1e15_1e16/parametric_fit.png)
+        ![](https://github.com/kyo-takano/chinchilla/blob/master/docs/imgs/parametric_fit.png)
 
         Args:
             cc: A Chinchilla instance with a Database of training runs and scaling law parameters if estimated.
@@ -101,7 +102,9 @@ class Visualizer:
         loss_range = loss_max - loss_min
         if self._next_point:
             loss_min = min(loss_min, cc.L(self._next_point["N"], self._next_point["D"]))
-        iso_losses = np.linspace(loss_min - loss_range * margin, loss_max + loss_range * margin, 32)
+        iso_losses = np.linspace(loss_min - loss_range * margin, loss_max + loss_range * margin, 32).astype(
+            np.float64
+        )  # cast: avoid potential error with float128
 
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         fig.tight_layout(pad=4.0, w_pad=3.0)
@@ -112,7 +115,7 @@ class Visualizer:
             # Get the highest value to include for each axis
             x_max, y_max = [
                 max(
-                    self.cc.seed_ranges[k][1],
+                    self.cc.seed_ranges[k][1] if hasattr(self.cc, "seed_ranges") else self.cc.database.df[k].max(),
                     self.cc.database.df[k].max(),
                     self._next_point[k] if self._next_point else -float("inf"),
                 )
@@ -152,20 +155,20 @@ class Visualizer:
 
         self.logger.info(f"Image saved to [u]{img_filepath}[/]")
 
-    def LBFGS(
+    def optim(
         self,
         y_pred: np.ndarray,
         y_true: np.ndarray,
         C: np.ndarray | None = None,
         simulation: bool = False,
-        img_name: str = "LBFGS",
+        img_name: str = "optim",
     ) -> None:
         """
-        Plots the results of L-BFGS optimization, including the loss history and prediction accuracy.
+        Plots the results of optimization, including the loss history and prediction accuracy.
         This method visualizes the predicted values versus the true labels and the error distribution.
 
         **Example output**:
-        ![](../examples/efficientcube-1e15_1e16/LBFGS.png)
+        ![](https://github.com/kyo-takano/chinchilla/blob/master/docs/imgs/optim--asymmetric.jpg)
 
         Args:
             y_pred (np.ndarray): Predicted values by the model.
@@ -223,7 +226,7 @@ class Visualizer:
             axs[1].set_yscale("log")
             axs[1].set_title("Compute and absolute error")
 
-        plt.suptitle("L-BFGS results")
+        plt.suptitle("Optimization result")
         plt.savefig(os.path.join(self.project_dir, img_name + ".png"))
         plt.show()
         plt.close()
@@ -231,13 +234,15 @@ class Visualizer:
     def _plot_loss_gradient(self, ax, x, y, iso_losses, y_max):
         """Helper method to plot the loss gradient."""
         # / 1 for converting to float when int
-        log_ymin = np.log10(self.cc.seed_ranges[y][0] / 1)
+        log_ymin = np.log10(
+            self.cc.seed_ranges[y][0] / 1 if hasattr(self.cc, "seed_ranges") else self.cc.database.df[y].min()
+        )
         log_ymax = np.log10(y_max / 1)
         log_ymin -= (log_ymax - log_ymin) * PADDING
         log_ymax += (log_ymax - log_ymin) * PADDING
 
         y_values = np.logspace(log_ymin, log_ymax, 1000, dtype=np.double)
-        assert not np.isnan(y_values).sum(), (f"{100*np.isnan(y_values).mean()}% NaN:", y_values)
+        assert not np.isnan(y_values).sum(), (f"{100 * np.isnan(y_values).mean()}% NaN:", y_values)
         for j, L in enumerate(iso_losses):
             if y == "N":
                 N = y_values
@@ -260,23 +265,24 @@ class Visualizer:
             ax.plot(x_values, y_values, c=self.cmap(j / len(iso_losses)), zorder=1)
 
     def _shadow_seed_regime(self, ax, x, y, resolution: int = 100):
-        """Helper method to fill the seed regime with gray."""
-        if x == "C":
-            c = np.logspace(*np.log10(self.cc.seed_ranges[x]), resolution)
-            if y == "N":
-                y_lower = np.sqrt(c / (6 * self.cc.seed_ranges.N_to_D[1]))
-                y_upper = np.sqrt(c / (6 * self.cc.seed_ranges.N_to_D[0]))
-            else:  # y == "D"
-                y_lower = np.sqrt(c * self.cc.seed_ranges.N_to_D[0] / 6)
-                y_upper = np.sqrt(c * self.cc.seed_ranges.N_to_D[1] / 6)
-            x_values = c
-        else:  # x in ["N", "D"]
-            n = np.logspace(*np.log10(self.cc.seed_ranges[x]), resolution)
-            y_lower = np.maximum(self.cc.seed_ranges["C"][0] / (6 * n), self.cc.seed_ranges.N_to_D[0] * n)
-            y_upper = np.minimum(self.cc.seed_ranges["C"][1] / (6 * n), self.cc.seed_ranges.N_to_D[1] * n)
-            x_values = n
+        """Helper method to fill the seed regime with gray. Executed only if the Chinchilla instance has `seed_ranges` specified."""
+        if hasattr(self.cc, "seed_ranges"):
+            if x == "C":
+                c = np.logspace(*np.log10(self.cc.seed_ranges[x]), resolution)
+                if y == "N":
+                    y_lower = np.sqrt(c / (6 * self.cc.seed_ranges.N_to_D[1]))
+                    y_upper = np.sqrt(c / (6 * self.cc.seed_ranges.N_to_D[0]))
+                else:  # y == "D"
+                    y_lower = np.sqrt(c * self.cc.seed_ranges.N_to_D[0] / 6)
+                    y_upper = np.sqrt(c * self.cc.seed_ranges.N_to_D[1] / 6)
+                x_values = c
+            else:  # x in ["N", "D"]
+                n = np.logspace(*np.log10(self.cc.seed_ranges[x]), resolution)
+                y_lower = np.maximum(self.cc.seed_ranges["C"][0] / (6 * n), self.cc.seed_ranges.N_to_D[0] * n)
+                y_upper = np.minimum(self.cc.seed_ranges["C"][1] / (6 * n), self.cc.seed_ranges.N_to_D[1] * n)
+                x_values = n
 
-        ax.fill_between(x_values, y_lower, y_upper, color="silver", alpha=0.5, zorder=0, label="Seed")
+            ax.fill_between(x_values, y_lower, y_upper, color="silver", alpha=0.5, zorder=0, label="Seed")
 
     def _adjust_subplot(self, ax, x, y, x_max, y_max):
         """Adjusts the subplot configurations and return the bound of values."""
@@ -284,12 +290,10 @@ class Visualizer:
         limits_by_k = {}
         for k in [x, y]:
             # Converting to `float` in case of int dtype (`np.log` cannot intake astronomically large integers)
+            min_value = self.cc.seed_ranges[k][0] if hasattr(self.cc, "seed_ranges") else self.cc.database.df[k].min()
             max_value = {x: x_max, y: y_max}[k] / 1
-            log_range = np.log(max_value) - np.log(self.cc.seed_ranges[k][0])
-            limits_by_k[k] = (
-                self.cc.seed_ranges[k][0] * np.exp(-log_range * PADDING),
-                max_value * np.exp(log_range * PADDING),
-            )
+            log_range = np.log(max_value) - np.log(min_value)
+            limits_by_k[k] = (min_value * np.exp(-log_range * PADDING), max_value * np.exp(log_range * PADDING))
 
         # Apply the bounds
         xlim, ylim = limits_by_k[x], limits_by_k[y]
@@ -361,3 +365,12 @@ class Visualizer:
         cbar.set_array([iso_losses])
         fig.colorbar(cbar, cax=cax)
         cax.set_ylabel("Loss", rotation=270, labelpad=16)
+
+    def LBFGS(self, *args, **kwargs):
+        """Deprecated function. Please use optim() instead."""
+        warnings.warn(
+            "`Visualizer.LBFGS(...)` is deprecated and will be removed in a future version. Use `Visualizer.optim(...)` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.optim(*args, **kwargs)

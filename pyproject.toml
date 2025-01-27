@@ -7,7 +7,7 @@ packages = ["chinchilla"]
 
 [project]
 name = 'chinchilla'
-version = "0.1.2"
+version = "0.2.0"
 description = "A toolkit for scaling law research"
 authors = [{ name = 'Kyo Takano', email = 'kyo.takano@mentalese.co' }]
 urls = {Homepage = "https://github.com/kyo-takano/chinchilla"}
@@ -15,7 +15,7 @@ readme = "README.md"
 license = { file = 'LICENSE' }
 requires-python = '>=3.8'
 dependencies = [
-  "pydantic==2.*",
+  "pydantic>=2.0.0,<3.0.0",
   "numpy",
   "scipy",
   "rich",

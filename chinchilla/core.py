@@ -23,7 +23,7 @@ from .visualizer import Visualizer  # Required for setting up visualization prop
 # 128bit/96bit: more precise than 64bit  at the cost of approx. 2x more time
 DTYPE = np.longdouble
 # 64bit: yields a *slightly different*, plausibly less precise result;
-# Recommendable exclusively for agile testing
+# Recommended exclusively for agile testing
 # DTYPE = np.double
 
 # Clip values by lower precision for stability with `loss_fn` and `weight_fn`.
@@ -54,11 +54,13 @@ class Chinchilla:
     alpha: float
     beta: float
 
+    algorithm = "BFGS"
+
     def __init__(
         self,
-        project_dir: str,
-        param_grid: dict[str, np.ndarray | list | tuple],
-        seed_ranges: dict[str, np.ndarray | list | tuple],
+        project_dir: str = "./",
+        param_grid: dict[str, np.ndarray | list | tuple] = {},
+        seed_ranges: dict[str, np.ndarray | list | tuple] = {},
         model_search_config: dict[str, Callable | dict] | None = None,
         loss_fn: Callable = asymmetric_mae,  # Fits to the floor (\approx. lower bound) of the distribution $L(N, D)$
         weight_fn: Callable | None = None,  # You nay weight loss prediction errors with any input
@@ -93,7 +95,28 @@ class Chinchilla:
 
         # input validation
         ParamGrid(**param_grid)
-        SeedRanges(**seed_ranges)
+        if seed_ranges:
+            SeedRanges(**seed_ranges)
+            # Convert dict to AttrDict for easy access
+            seed_ranges = AttrDict(seed_ranges)
+
+            """Initialize configurations"""
+            # Seed
+            self.seed_ranges = AttrDict(
+                # User-specified
+                C=[float(c) for c in seed_ranges.C],  # tuple/list of large integers (>2 ** 63) can result in errors
+                N_to_D=seed_ranges.N_to_D,
+                # Pre-compute the bounds of allocations for the seed models
+                N=[
+                    np.sqrt(seed_ranges.C[0] / (6 * seed_ranges.N_to_D[1])),  # lower bound
+                    np.sqrt(seed_ranges.C[1] / (6 * seed_ranges.N_to_D[0])),  # upper bound
+                ],
+                D=[
+                    np.sqrt(seed_ranges.C[0] * seed_ranges.N_to_D[0] / 6),  # lower bound
+                    np.sqrt(seed_ranges.C[1] * seed_ranges.N_to_D[1] / 6),  # upper bound
+                ],
+            )
+
         if model_search_config:
             ModelSearchConfig(**model_search_config)
         else:
@@ -109,26 +132,6 @@ class Chinchilla:
             raise TypeError("`loss_fn` must be callable")
         if weight_fn and not callable(loss_fn):
             raise TypeError("`weight_fn` must be callable or None")
-
-        # Convert dict to AttrDict for easy access
-        seed_ranges = AttrDict(seed_ranges)
-
-        """Initialize configurations"""
-        # Seed
-        self.seed_ranges = AttrDict(
-            # User-specified
-            C=[float(c) for c in seed_ranges.C],  # tuple/list of large integers (>2 ** 63) can result in errors
-            N_to_D=seed_ranges.N_to_D,
-            # Pre-compute the bounds of allocations for the seed models
-            N=[
-                np.sqrt(seed_ranges.C[0] / (6 * seed_ranges.N_to_D[1])),  # lower bound
-                np.sqrt(seed_ranges.C[1] / (6 * seed_ranges.N_to_D[0])),  # upper bound
-            ],
-            D=[
-                np.sqrt(seed_ranges.C[0] * seed_ranges.N_to_D[0] / 6),  # lower bound
-                np.sqrt(seed_ranges.C[1] * seed_ranges.N_to_D[1] / 6),  # upper bound
-            ],
-        )
 
         # Fit
         self.model_search_config = model_search_config
@@ -192,8 +195,8 @@ class Chinchilla:
     def _create_shortcuts(self) -> None:
         """Sets up shortcut methods."""
         # Bypass instance methods to class methods; override the class method once constructed
-        self.allocate_compute = lambda C: Chinchilla.allocate_compute(C, self.get_params())
-        self.predict_loss = lambda N, D: Chinchilla.predict_loss(N, D, self.get_params())
+        self.allocate_compute = lambda C: Chinchilla.allocate_compute(C, self.params)
+        self.predict_loss = lambda N, D: Chinchilla.predict_loss(N, D, self.params)
 
         # Submodules; consult each class for what it does
         self.append = self.database.append
@@ -231,6 +234,9 @@ class Chinchilla:
         Raises:
             ValueError: If a valid configuration could not be found after a certain number of trials.
         """
+        if not hasattr(self, "seed_ranges"):
+            raise ValueError("When sampling seeds, you need to specify `seed_ranges` argment at initialization")
+
         get_model_config = self.model_search_config is not None
 
         _max_iters = 2**10
@@ -249,22 +255,24 @@ class Chinchilla:
         else:
             raise ValueError(f"We could not find a valid configuration in {_max_iters} trials.")
 
-        self.logger.debug(f"[{ordinal(len(self.database.df)+1)}]\t{C:.2e} FLOPs => {N:.2e} params * {D:.2e} samples")
+        self.logger.debug(f"[{ordinal(len(self.database.df) + 1)}]\t{C:.2e} FLOPs => {N:.2e} params * {D:.2e} samples")
 
         return (N, D), model_config
 
     def fit(self, parallel: bool = True, simulation: bool = False) -> None:
         """
-        Uses [L-BFGS optimization (SciPy implementation)](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html)
+        Uses [BFGS optimization (SciPy implementation)](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html)
         to find the best-fitting parameters for the scaling law based on the collected data.
+        Note that this choice of optimizer is different from the original paper, which instead used L-BFGS (without explicit bounds).
+        We choose BFGS for its absolute advantage in terms of accuracy and efficiency (see [this discussion](https://github.com/kyo-takano/chinchilla/blob/master/docs/changes.md#4-algorithm-l-bfgs-b--bfgs) for more details)
 
         Args:
-            parallel (bool, optional): Whether to run L-BFGS optimization over the initialization grid in parallel processing.
+            parallel (bool, optional): Whether to run BFGS optimization over the initialization grid in parallel processing.
             simulation (bool, optional): Indicates whether the fitting is part of a simulation. Defaults to False.
 
         Raises:
             ValueError: If there are not enough data points to perform the fitting.
-            TypeError: If the numerical precision is insufficient for the L-BFGS algorithm.
+            TypeError: If the numerical precision is insufficient for the BFGS algorithm.
         """
         _df = self.database.df.copy()
 
@@ -275,7 +283,9 @@ class Chinchilla:
 
         if DTYPE().itemsize < 8:  # In bytes
             raise TypeError(
-                "The current operation requires a numerical precision of at least 64-bit as used in the L-BFGS algorithm. Lower precisions such as np.float32 or below are not supported for this operation. Please ensure you're using np.float64 or higher precision to avoid this error."
+                "The current operation requires a numerical precision of at least 64-bit as used in the BFGS algorithm. "
+                "Lower precisions such as np.float32 or below are not supported for this operation. "
+                "Please ensure you're using np.float64 or higher precision to avoid this error."
             )
 
         # Pre-compute the series repeatedly accessed by `self._evaluate_params`
@@ -283,7 +293,7 @@ class Chinchilla:
             # raise NotImplementedError("When specifying `weight_fn`, you are expected to edit the source code by deleting this error and specify how to compute yourself.")
             self.logger.warning(
                 "`weight_fn` receives `cc.dataframe.df.C` as its default argument. "
-                "If you want to weigh L-BFGS losses by something else, please edit the source code."
+                "If you want to weight BFGS losses by something else, please edit the source code."
             )
             weights = self.weight_fn(_df.C.values.astype(DTYPE))
             weights /= weights.mean()
@@ -310,23 +320,11 @@ class Chinchilla:
         initial_guesses = list(itertools.product(*self.param_grid.values()))
         initial_guesses /= self._autoscale_range
 
-        def _optimize_params(i):
-            x0 = initial_guesses[i]
-            # res = sciop.minimize(self._evaluate_params, x0, method="L-BFGS-B", tol=1e-7)  # Note: `tol` -> `ftol`
-            # lbfgs_loss = res.fun
-            # if np.isfinite(lbfgs_loss):
-            #     return res.x * self._autoscale_range, lbfgs_loss
-            # https://github.com/scipy/scipy/blob/v1.12.0/scipy/optimize/_lbfgsb_py.py
-            x, lbfgs_loss, _ = sciop.fmin_l_bfgs_b(
-                self._evaluate_params,
-                x0,
-                approx_grad=True,
-                maxiter=1_000_000,
-                maxfun=1_000_000,
-                # Default values generally perform fine
-            )
-            if np.isfinite(lbfgs_loss):
-                return x, lbfgs_loss
+        def _optimize_params(x0):
+            result = sciop.minimize(self._evaluate_params, x0, method=self.algorithm)
+            L_bfgs = result.fun
+            if np.isfinite(L_bfgs):
+                return result.x, L_bfgs
 
         with multiprocessing.Pool(os.cpu_count()) as pool:
             with Progress(
@@ -344,19 +342,19 @@ class Chinchilla:
                 results = []
                 if parallel:
                     self.logger.debug(f"{os.cpu_count()=}")
-                    for res in pool.imap_unordered(_optimize_params, range(len(initial_guesses))):
+                    for res in pool.imap_unordered(_optimize_params, initial_guesses):
                         if res:
                             results.append(res)
                         progress.update(task, advance=1.0)
                 else:
-                    for i in range(len(initial_guesses)):
-                        res = _optimize_params(i)
+                    for x0 in initial_guesses:
+                        res = _optimize_params(x0)
                         if res:
                             results.append(res)
                         progress.update(task, advance=1.0)
 
         if not results:
-            raise ValueError("No valid result from L-BFGS. `loss_fn` you have specified is possibly broken.")
+            raise ValueError("No valid result from BFGS. `loss_fn` you have specified is possibly broken.")
         best_fit = min(results, key=lambda x: x[1])
         self.E, self.A, self.B, self.alpha, self.beta = best_fit[0] * self._autoscale_range
 
@@ -368,7 +366,7 @@ class Chinchilla:
         N, D = _df.N.values, _df.D.values
         # N, D = N.astype(float), D.astype(float)  # In case N and D were type object in pandas/numpy
         y_pred = self.predict_loss(N, D)
-        self.visualizer.LBFGS(y_pred, _df.loss.values, simulation=simulation)
+        self.visualizer.optim(y_pred, _df.loss.values, simulation=simulation)
 
         self.logger.info(
             f"Loss predictor:\n\n  L(N, D) = {self.E:#.4g} + {self.A:#.4g} / (N ^ {self.alpha:#.4g}) + {self.B:#.4g} / (D ^ {self.beta:#.4g})\n"
@@ -434,7 +432,11 @@ class Chinchilla:
         if C is None:
             # Use the preset `scaling_factor` if not overridden
             scaling_factor = scaling_factor or self.scaling_factor
-            C = max(self.seed_ranges.C[1], int(self.database.df.C.max())) * scaling_factor
+            if hasattr(self, "seed_ranges"):
+                C = max(self.seed_ranges.C[1], int(self.database.df.C.max())) * scaling_factor
+            else:
+                # You can only use the existing max when `seed_ranges` is not specified
+                C = int(self.database.df.C.max()) * scaling_factor
 
         N, D = self.allocate_compute(C)
         if get_model_config:
@@ -446,9 +448,13 @@ class Chinchilla:
         else:
             model_config = None
 
-        self.logger.info(f"[{ordinal(len(self.database.df)+1)}]\t{C:.2e} FLOPs => {N:.2e} params * {D:.2e} samples")
-        self.plot(next_point=dict(C=C, N=N, D=D), simulation=simulation)
-
+        self.logger.info(f"[{ordinal(len(self.database.df) + 1)}]\t{C:.2e} FLOPs => {N:.2e} params * {D:.2e} samples")
+        self.plot(
+            next_point=dict(
+                C=np.array(C, dtype=np.float64), N=np.array(N, dtype=np.float64), D=np.array(D, dtype=np.float64)
+            ),
+            simulation=simulation,
+        )
         return (N, D), model_config
 
     def step(
@@ -471,7 +477,7 @@ class Chinchilla:
 
         Args:
             num_seeding_steps (int, optional): The threshold number of seed training runs before starting to scale the compute budget.
-            parallel (bool, optional): Whether to run L-BFGS optimization over the initialization grid in parallel processing. To be passed to `fit`.
+            parallel (bool, optional): Whether to run BFGS optimization over the initialization grid in parallel processing. To be passed to `fit`.
             simulation (bool, optional): Indicates whether the scaling is part of a simulation. Defaults to False.
             **scale_kwargs: Keyword arguments to be passed to `scale` (`scaling_factor` and `C`).
 
@@ -673,9 +679,9 @@ class Chinchilla:
 
         return E + np.exp(log_term_2nd) + np.exp(log_term_3rd)
 
-    def _evaluate_params(self, x) -> np.ndarray:
+    def _evaluate_params(self, x) -> float:
         """
-        Internal method to compute the loss for the L-BFGS algorithm.
+        Internal method to compute the loss for the BFGS algorithm.
 
         This method evaluates the loss function for a given set of parameters during the optimization process.
 
@@ -694,8 +700,8 @@ class Chinchilla:
                 f"This was possibly because `loss_fn` you specified is compatible with type `{DTYPE}`"
             )
 
-        # Scipy/Fortran implementation of LBFGS casts `x0` to float64 internally, so recover here.
-        # Invert autoscaling & decompose
+        # Scipy/Fortran implementation of BFGS casts `x0` to float64 internally, so recover here.
+        # Unscale & decompose
         E, a, b, alpha, beta = x.astype(DTYPE) * self._autoscale_range
 
         # Ensure the log scale for `a` and `b` but `E`.
@@ -718,21 +724,34 @@ class Chinchilla:
         if self.weight_fn:
             losses = losses * self._const["weights"]
 
-        return np.mean(losses)
+        return float(np.mean(losses))
 
-    def get_params(self) -> dict:
+    @property
+    def params(self) -> dict:
         """
-        Returns a dictionary of estimated parameters describing the scaling law / parametric loss estimator.
+        A proxy to get scaling law parameters by internally calling Chinchilla.get_params()
+        """
+        return self.get_params()
+
+    def get_params(self) -> dict[str, float]:
+        """
+        Returns a dictionary of the scaling law parameters.
 
         Returns:
-            float: The computed loss value.
+            dict: A dictionary of the optimized parameters
 
         Raises:
             ValueError: If the scaling law parameters have not been set as attributes.
         """
         if not all(hasattr(self, param) for param in ["E", "A", "B", "alpha", "beta"]):
             raise ValueError("You must call `fit` before training a model with scaled compute.")
-        return {"E": self.E, "A": self.A, "B": self.B, "alpha": self.alpha, "beta": self.beta}
+        return {
+            "E": float(self.E),
+            "A": float(self.A),
+            "B": float(self.B),
+            "alpha": float(self.alpha),
+            "beta": float(self.beta),
+        }
 
     def report(self, plot: bool = True) -> None:
         """
@@ -751,7 +770,7 @@ class Chinchilla:
             raise ValueError("You must call `fit` before generating a report.")
 
         self.logger.info("Estimated scaling law parameters:")
-        for param, value in self.get_params().items():
+        for param, value in self.params.items():
             self.logger.info(f"    - {param}: {value}")
         if len(self.database.df):
             self.logger.info("Goodness of fit:")
@@ -766,3 +785,98 @@ class Chinchilla:
             if plot:
                 self.logger.info("Landscape visualization:")
                 self.plot()
+
+    def sweep_param_grid(self, plot=True, img_name="sweep_param_grid"):
+        """Utility method to visualize the 1D landscape of minimum loss by each parameter value in grid"""
+
+        _df = self.database.df.copy()
+        if not len(_df):
+            raise ValueError("You do not have any training runs yet.")
+        # Pre-compute the series repeatedly accessed by `self._evaluate_params`
+        if self.weight_fn:
+            # raise NotImplementedError("When specifying `weight_fn`, you are expected to edit the source code by deleting this error and specify how to compute yourself.")
+            self.logger.warning(
+                "`weight_fn` receives `cc.dataframe.df.C` as its default argument. "
+                "If you want to weight BFGS losses by something else, please edit the source code."
+            )
+            weights = self.weight_fn(_df.C.values.astype(DTYPE))
+            weights /= weights.mean()
+        else:
+            weights = None
+
+        self._const = dict(
+            log_N=np.log(_df.N.values.astype(DTYPE)),
+            log_D=np.log(_df.D.values.astype(DTYPE)),
+            y_true=_df.loss.values.astype(DTYPE),
+            weights=weights,
+        )
+
+        # The absolute value range affects the differential optimization
+        self._autoscale_range = np.array(list(map(np.ptp, self.param_grid.values())))
+        # In case of any axis with a single initial value:
+        self._autoscale_range[self._autoscale_range == 0] = 1.0
+
+        initial_guesses = list(itertools.product(*self.param_grid.values()))
+        initial_guesses /= self._autoscale_range
+
+        global _eval_fn  # for parallel
+
+        def _eval_fn(x0):
+            loss = self._evaluate_params(x0)
+            return (x0, loss) if np.isfinite(loss) else (x0, float("inf"))
+
+        with multiprocessing.Pool(os.cpu_count()) as pool:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TimeElapsedColumn(),
+                "/",
+                TimeRemainingColumn(),
+                disable=self.logger.getEffectiveLevel() > 30,
+            ) as progress:
+                task = progress.add_task("Sweeping the parameter grid", total=len(initial_guesses))
+                results = []
+                for res in pool.imap_unordered(_eval_fn, initial_guesses):
+                    results.append(res)
+                    progress.update(task, advance=1.0)
+
+        best_fit, best_loss = min(results, key=lambda x: x[1])
+
+        if plot:
+            import matplotlib.pyplot as plt
+
+            # Create a subplot for each parameter
+            _, axes = plt.subplots(1, 5, figsize=(11, 3), sharey=True)
+            param_names = list(self.param_grid.keys())
+
+            # For each parameter:
+            ylim = [-float("inf"), float("inf")]
+            for param_idx, (param_name, ax) in enumerate(zip(param_names, axes)):
+                # Get unique values in the grid
+                v_unique = np.unique([x[param_idx] for x, _ in results])
+
+                # Minimizer for each unique value
+                min_losses = []
+                for val in v_unique:
+                    losses = [loss for (x, loss) in results if x[param_idx] == val]
+                    min_losses.append(min(losses))
+
+                # Plot parameter value vs minimum loss
+                ax.plot(v_unique * self._autoscale_range[param_idx], min_losses, "b-")
+                ax.set_xlabel(param_name)
+                if max(min_losses) < ylim[1]:
+                    ylim[1] = max(min_losses)
+                if ylim[0] < min(min_losses):
+                    ylim[0] = min(min_losses)
+                for x0 in self.param_grid[param_name]:
+                    ax.axvline(x0, ls=":", c="tab:gray", lw=1)
+                ax.axhline(best_loss, ls="--", c="tab:red", lw=1 / 2)
+            ax.set_ylim(*[ylim[0] / 1.05, ylim[1] * 1.05])
+            plt.suptitle("1D loss landscape by initial parameter values")
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.project_dir, img_name + ".png"))
+            plt.show()
+            plt.close()
+
+        return best_fit, best_loss
