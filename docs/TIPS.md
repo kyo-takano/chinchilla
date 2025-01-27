@@ -65,28 +65,9 @@ The minima are smoother and more stable, allowing for easier convergence during 
 
 As a matter of fact, this technique is so effective that even a naive grid search can work almost as good as L-BFGS:
 
-<div style="display: flex; justify-content: center; gap: 1.5rem; align-items: center; font-size: 1.5rem;">
-    <div>
-        <img src="./imgs/algorithm.init-original.png" alt="Original Algorithm">
-    </div>
-    ➡️
-    <div>
-      <img src="./imgs/algorithm.init-improved.png" alt="Improved Algorithm">
-    </div>
-</div>
+![Algorithms' performance by initialization quality](imgs/algorithm.comparison.png)
 
-## 2. Keep `scaling_factor` moderate
-
-Scaling compute according to the loss predictor involves ***extrapolation*** beyond the FLOPs regime used for fitting the predictor.
-To avoid overstepping, it's advisable to:
-
-- **Incrementally scale compute** rather than making large jumps.
-- ***Continuously update*** the scaling law as a new data point becomes available.
-
-As a rule of thumb, I would suggest using`scaling_factor=2.0` as a good starting point.
-This approach balances the compute budget by dedicating roughly half of it to scaling law estimation and the other half to final model training.
-
-## 3. Beware of "failure modes"
+## 2. Beware of "failure modes"
 
 When fitting the loss predictor, several common failure modes may arise. These are often tied to poor configurations, including;
 
@@ -97,6 +78,17 @@ When fitting the loss predictor, several common failure modes may arise. These a
 - **Underfitting due to poor optimization**
 
   ![Underfitting failure](imgs/optim--underfit.jpg)
+
+## 3. Keep `scaling_factor` moderate
+
+Scaling compute according to the loss predictor involves ***extrapolation*** beyond the FLOPs regime used for fitting the predictor.
+To avoid overstepping, it's advisable to:
+
+- **Incrementally scale compute** rather than making large jumps.
+- ***Continuously update*** the scaling law as a new data point becomes available.
+
+As a rule of thumb, I would suggest using`scaling_factor=2.0` as a good starting point.
+This approach balances the compute budget by dedicating roughly half of it to scaling law estimation and the other half to final model training.
 
 ---
 

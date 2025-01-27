@@ -70,7 +70,6 @@ pip install -e .
 
 Just in case you are not familiar, here is the formulation of the scaling law estimation:
 
-<!-- ### Definitions -->
 <details>
 
 <summary style="font-weight: bold;">Variables</summary>
@@ -85,13 +84,11 @@ Just in case you are not familiar, here is the formulation of the scaling law es
   **Intuition**:
   - $E$ corresponds to the **irreducible loss** that can only be atained with an ideal model with infinite compute
   - $A / N ^ \alpha$ accconts for the additional loss coming from insufficiency of model size;
-  - $ B / D ^ \beta$, insufficiency of data amount.
+  - $B / D ^ \beta$, insufficiency of data amount.
 
 </details>
 
 <details>
-
-<!-- ### Compute-Optimal Allocation -->
 
 <summary style="font-weight: bold;">Objective</summary>
 
@@ -105,7 +102,7 @@ Just in case you are not familiar, here is the formulation of the scaling law es
 ### 1. Fitting the scaling law on existing dataset
 
 > [!NOTE]
-> An example of this usage can be found [here](examples/llm/)
+> An example of this usage can be found [here](https://github.com/kyo-takano/chinchilla/blob/master/examples/llm/main.ipynb)
 
 First, prepare a CSV looking like this and save it as `df.csv`:
 
@@ -157,7 +154,7 @@ You can get an estimatedly compute-optimal allocation of compute to $N$ and $D$.
 ### 2. Scaling from scratch
 
 > [!NOTE]
-> An example of this usage can be found [here](examples/llm)
+> An example of this usage can be found [here](https://github.com/kyo-takano/chinchilla/blob/master/examples/efficientcube.ipynb)
 
 > **Procedure**:
 >
