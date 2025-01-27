@@ -1,4 +1,5 @@
 """A few loss & weight functions you can use on demand."""
+
 from __future__ import annotations  # PEP 604 backport
 
 import numpy as np

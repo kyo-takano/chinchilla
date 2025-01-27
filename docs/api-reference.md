@@ -1,4 +1,4 @@
-# API Reference
+# 🐭 API Reference
 
 # `chinchilla.core.Chinchilla`
 
@@ -6,20 +6,26 @@
 class Chinchilla()
 ```
 
-Estimates the scaling law for a deep learning task. Provides functionalities to:
+Estimates the scaling law for a deep learning task.
+Provides functionalities to:
 
 1. Sample models from a specified "seed" regime.
 2. Fit the loss predictor $L(N, D)$.
 3. Suggest an allocation of scaled compute.
 
-This module includes the `Chinchilla` class, which provides methods for sampling model configurations, fitting the parametric loss predictor, suggesting allocations for scaled compute budgets, etc. It operates in a numerical precision of **128-bit** by default and integrates with [`chinchilla.Database`](#chinchilladatabaseDatabase) and [`chinchilla.Visualizer`](#chinchillavisualizerVisualizer) for storing and plotting data.
+This module includes the `Chinchilla` class, which provides methods for sampling model configurations,
+fitting the parametric loss predictor, suggesting allocations for scaled compute budgets, etc.
+It operates in a numerical precision of **128-bit** by default and integrates with
+[`chinchilla.Database`](#chinchilladatabaseDatabase) and
+[`chinchilla.Visualizer`](#chinchillavisualizerVisualizer)
+for storing and plotting data.
 
 ### `__init__`
 
 ```python
-def __init__(project_dir: str,
-             param_grid: dict[str, np.ndarray | list | tuple],
-             seed_ranges: dict[str, np.ndarray | list | tuple],
+def __init__(project_dir: str = "./",
+             param_grid: dict[str, np.ndarray | list | tuple] = {},
+             seed_ranges: dict[str, np.ndarray | list | tuple] = {},
              model_search_config: dict[str, Callable | dict] | None = None,
              loss_fn: Callable = asymmetric_mae,
              weight_fn: Callable | None = None,
@@ -40,7 +46,8 @@ Initializes a Chinchilla instance with the given parameters and sets up the scal
 - `weight_fn` _Callable | None, optional_ - A function to weight loss prediction errors. Defaults to None.
 - `num_seeding_steps` _int | None, optional_ - The number of seeding steps to perform. Defaults to None.
 - `scaling_factor` _float | None, optional_ - The scaling factor to be used when scaling up compute. Defaults to None.
-- `log_level` _int | str, optional_ - Specifies the threshold for logging messages. A value of 30 suppresses standard messages while any larger values hide all messages entirely. Defaults to 20 (`logging.INFO`).
+- `log_level` _int | str, optional_ - Specifies the threshold for logging messages.
+  A value of 30 suppresses standard messages while any larger values hide all messages entirely. Defaults to 20 (`logging.INFO`).
 
 **Raises**:
 
@@ -76,7 +83,8 @@ Constructs a Chinchilla instance from a configuration file, with the option to o
 def simulate(*args, **kwargs) -> None
 ```
 
-Simulates the scaling law estimation process using the provided arguments. This method is a wrapper around the Simulator class, allowing for quick setup and execution of simulations.
+Simulates the scaling law estimation process using the provided arguments.
+This method is a wrapper around the Simulator class, allowing for quick setup and execution of simulations.
 
 **Arguments**:
 
@@ -93,7 +101,9 @@ Sample a random allocation and model configuration from the user-specified seed 
 
 **Returns**:
 
-`(N, D), model_config` - A tuple containing the allocation $(N, D)$ followed by a model configuration dictionary corresponding to $N$. If `model_search_config` is not specified, the latter will be `None`.
+  `(N, D), model_config` - A tuple containing the allocation $(N, D)$ followed by
+  a model configuration dictionary corresponding to $N$. If `model_search_config` is not specified,
+  the latter will be `None`.
 
 **Raises**:
 
@@ -105,17 +115,20 @@ Sample a random allocation and model configuration from the user-specified seed 
 def fit(parallel: bool = True, simulation: bool = False) -> None
 ```
 
-Uses [L-BFGS optimization (SciPy implementation)](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html) to find the best-fitting parameters for the scaling law based on the collected data.
+Uses [BFGS optimization (SciPy implementation)](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html)
+to find the best-fitting parameters for the scaling law based on the collected data.
+Note that this choice of optimizer is different from the original paper, which instead used L-BFGS (without explicit bounds).
+We choose BFGS for its absolute advantage in terms of accuracy and efficiency (see [this discussion](https://github.com/kyo-takano/chinchilla/blob/master/docs/changes.md#4-algorithm-l-bfgs-b--bfgs) for more details)
 
 **Arguments**:
 
-- `parallel` _bool, optional_ - Whether to run L-BFGS optimization over the initialization grid in parallel processing.
+- `parallel` _bool, optional_ - Whether to run BFGS optimization over the initialization grid in parallel processing.
 - `simulation` _bool, optional_ - Indicates whether the fitting is part of a simulation. Defaults to False.
 
 **Raises**:
 
 - `ValueError` - If there are not enough data points to perform the fitting.
-- `TypeError` - If the numerical precision is insufficient for the L-BFGS algorithm.
+- `TypeError` - If the numerical precision is insufficient for the BFGS algorithm.
 
 ### `scale`
 
@@ -160,7 +173,8 @@ Determines the compute-optimal allocation of a scaled FLOP budget for the next m
 
 **Returns**:
 
-`(N, D), model_config` - A tuple containing the allocation $(N, D)$ and an optional dictionary with the model configuration corresponding to $N$.
+  `(N, D), model_config` - A tuple containing the allocation $(N, D)$ and
+  an optional dictionary with the model configuration corresponding to $N$.
 
 **Raises**:
 
@@ -178,7 +192,8 @@ def step(num_seeding_steps: int | None = None,
          **scale_kwargs) -> tuple[tuple[int, float], dict[str, int] | None]
 ```
 
-Shorthand method automatically routing to `seed` or `fit` & `scale` methods, depending on the existing number of training runs in the seed regime.
+Shorthand method automatically routing to `seed` or `fit` & `scale` methods,
+depending on the existing number of training runs in the seed regime.
 
 > If you prefer to be explicit about the seeding and scaling steps, you can use the following approach:
 >
@@ -194,13 +209,14 @@ Shorthand method automatically routing to `seed` or `fit` & `scale` methods, dep
 **Arguments**:
 
 - `num_seeding_steps` _int, optional_ - The threshold number of seed training runs before starting to scale the compute budget.
-- `parallel` _bool, optional_ - Whether to run L-BFGS optimization over the initialization grid in parallel processing. To be passed to `fit`.
+- `parallel` _bool, optional_ - Whether to run BFGS optimization over the initialization grid in parallel processing. To be passed to `fit`.
 - `simulation` _bool, optional_ - Indicates whether the scaling is part of a simulation. Defaults to False.
 - `**scale_kwargs` - Keyword arguments to be passed to `scale` (`scaling_factor` and `C`).
 
 **Returns**:
 
-`(N, D), model_config` - A tuple containing the allocation $(N, D)$ and an optional dictionary with the model configuration corresponding to $N.
+  `(N, D), model_config` - A tuple containing the allocation $(N, D)$ and
+  an optional dictionary with the model configuration corresponding to $N.
 
 **Raises**:
 
@@ -215,7 +231,8 @@ Shorthand method automatically routing to `seed` or `fit` & `scale` methods, dep
 def adjust_D_to_N(N: float) -> float
 ```
 
-Adjusts $D$ (the number of data samples) to $N$ (the number of model parameters) based on the scaling law. Computes:
+Adjusts $D$ (the number of data samples) to $N$ (the number of model parameters) based on the scaling law.
+Computes:
 
 $$D = G^{-(1 + b/a)} N^{b/a}$$
 
@@ -228,7 +245,8 @@ $$D = G^{-(1 + b/a)} N^{b/a}$$
 > D = cc.adjust_D_to_N(N)
 > ```
 >
-> Once you get an estimate of the scaling law for your task, you may want to update $D$ to match the actual value of $N$ if your `estimate_model_size` is not strictly accurate.
+> Once you get an estimate of the scaling law for your task,
+> you may want to update $D$ to match the actual value of $N$ if your `estimate_model_size` is not strictly accurate.
 
 **Arguments**:
 
@@ -250,11 +268,13 @@ def allocate_compute(cls, C: float | list | np.ndarray,
                      params: dict) -> tuple[float, float] | np.ndarray
 ```
 
-Allocates a given computational budget (C) to the optimal number of model parameters (N) and data samples (D), which wouls satisfy the following formula based on the scaling law parameters provided in the `params` dictionary.
+Allocates a given computational budget (C) to the optimal number of model parameters (N) and data samples (D),
+which wouls satisfy the following formula based on the scaling law parameters provided in the `params` dictionary.
 
 $$\underset{N,\ D}{argmin}\ L(N,\ D\ |\ E,\ A,\ B,\ \alpha,\ \beta)$$
 
-Once instantiated, this class method gets overridden by `__allocate_compute` so that `params` are automatically specified from the instance attributes.
+Once instantiated, this class method gets overridden by `__allocate_compute` so that `params` are
+automatically specified from the instance attributes.
 
 > **Example Usages**:
 >
@@ -286,7 +306,8 @@ Once instantiated, this class method gets overridden by `__allocate_compute` so 
 
 **Returns**:
 
-tuple[float, float] | np.ndarray: A tuple containing the optimal number of model parameters (N) and data samples (D). If C is an array, the output will be a 2D array with shape (len(C), 2).
+  tuple[float, float] | np.ndarray: A tuple containing the optimal number of model parameters (N) and
+  data samples (D). If C is an array, the output will be a 2D array with shape (len(C), 2).
 
 **Raises**:
 
@@ -300,11 +321,14 @@ def predict_loss(cls, N: np.ndarray | float, D: np.ndarray | float,
                  params: dict) -> np.ndarray | float
 ```
 
-Predicts the loss for given allocations of model parameters (N) and data samples (D) using the scaling law parameters provided in the `params` dictionary.
+Predicts the loss for given allocations of model parameters (N) and data samples (D) using the scaling law
+parameters provided in the `params` dictionary.
 
-The loss is calculated based on the following formula: $$L(N,\ D\ |\ E,\ A,\ B,\ \alpha,\ \beta) = E + A \cdot N^{-\alpha} + B \cdot D^{-\beta}$$
+The loss is calculated based on the following formula:
+$$L(N,\ D\ |\ E,\ A,\ B,\ \alpha,\ \beta) = E + A \cdot N^{-\alpha} + B \cdot D^{-\beta}$$
 
-Once instantiated, this class method gets overridden by `__predict_loss` so that `params` are automatically specified from the instance attributes.
+Once instantiated, this class method gets overridden by `__predict_loss` so that `params` are
+automatically specified from the instance attributes.
 
 > **Example Usages**:
 >
@@ -339,23 +363,33 @@ Once instantiated, this class method gets overridden by `__predict_loss` so that
 
 **Returns**:
 
-np.ndarray | float: The predicted loss or an array of predicted losses.
+  np.ndarray | float: The predicted loss or an array of predicted losses.
 
 **Raises**:
 
 - `ValueError` - If `params` is missing any of the required parameters (E, A, B, alpha, beta).
 
+### `params`
+
+```python
+@property
+def params() -> dict
+```
+
+A proxy to get scaling law parameters by internally calling Chinchilla.get_params()
+
 ### `get_params`
 
 ```python
-def get_params() -> dict
+def get_params() -> dict[str, float]
 ```
 
-Returns a dictionary of estimated parameters describing the scaling law / parametric loss estimator.
+Returns a dictionary of the scaling law parameters.
 
 **Returns**:
+`
 
-- `float` - The computed loss value.
+- `dict` - A dictionary of the optimized parameters
 
 **Raises**:
 
@@ -380,15 +414,28 @@ The report includes:
 
 - `ValueError` - If the scaling law parameters have not been estimated yet.
 
-# `chinchilla.database.Database`
+### `sweep_param_grid`
+
+```python
+def sweep_param_grid(plot=True, img_name="sweep_param_grid")
+```
+
+Utility method to visualize the 1D landscape of minimum loss by each parameter value in grid
+
+# `chinchilla.database`
+
+## `Database`
 
 ```python
 class Database()
 ```
 
-Stores and manipulates scaling data in a Pandas DataFrame the default persistence to a CSV file. The Database class is used internally by a `Chinchilla` instance.
+Stores and manipulates scaling data in a Pandas DataFrame the default persistence to a CSV file.
+The Database class is used internally by a `Chinchilla` instance.
 
-If `project_dir` is provided, the DataFrame is initialized from the CSV file at that location. If the file does not exist or is empty, a new DataFrame is created. If `project_dir` is None, the DataFrame is kept in memory.
+If `project_dir` is provided, the DataFrame is initialized from the CSV file at that location.
+If the file does not exist or is empty, a new DataFrame is created. If `project_dir` is None,
+the DataFrame is kept in memory.
 
 **Default columns**:
 
@@ -415,7 +462,8 @@ Initializes the Database instance.
 
 **Arguments**:
 
-- `project_dir` _Optional[str]_ - The directory path to save the DataFrame as a CSV file. If None, the DataFrame will not be saved to disk.
+- `project_dir` _Optional[str]_ - The directory path to save the DataFrame as a CSV file.
+  If None, the DataFrame will not be saved to disk.
 - `columns` _List[str]_ - A list of column names for the DataFrame.
 - `log_level` _int_ - The logging level for the logger instance.
 
@@ -427,19 +475,29 @@ def append(**result: dict[str, float]) -> None
 
 Appends a new row of results to the DataFrame and updates the CSV file if `project_dir` is set.
 
-If 'C' is not provided in `result`, it is automatically calculated as $6ND$. All numerical values are rounded to the nearest integer to prevent scientific notation in large values. Additional columns provided by the user are appended to the DataFrame.
+If 'C' is not provided in `result`, it is automatically calculated as $6ND$.
+All numerical values are rounded to the nearest integer to prevent scientific notation in large values.
+Additional columns provided by the user are appended to the DataFrame.
 
 **Arguments**:
 
-- `result` _dict[str, float]_ - A dictionary containing the data to append. Must include 'N', 'D', and 'loss' keys. If 'C' is not provided in `result`, it is automatically calculated as $6ND$. All numerical values are rounded to the nearest integer to prevent losing precisions to scientific notation for large values. Additional columns provided by the user will be appended to the DataFrame without any conflicts.
+- `result` _dict[str, float]_ - A dictionary containing the data to append. Must include 'N', 'D', and 'loss' keys.
+  If 'C' is not provided in `result`, it is automatically calculated as $6ND$.
+  All numerical values are rounded to the nearest integer to prevent losing precisions to scientific notation for large values.
+  Additional columns provided by the user will be appended to the DataFrame without any conflicts.
 
-# `chinchilla.visualizer.Visualizer`
+# `chinchilla.visualizer`
+
+## `Visualizer`
 
 ```python
 class Visualizer()
 ```
 
-`Visualizer` includes methods for plotting the estimated loss gradient, the efficient frontier, and L-BFGS optimization results. It helps in understanding the distribution and relationships between compute resources, model parameters, and data samples, and highlights efficient allocation frontiers and seed regimes.
+`Visualizer` includes methods for plotting the estimated loss gradient, the efficient frontier,
+and BFGS optimization results. It helps in understanding the distribution and relationships between
+compute resources, model parameters, and data samples, and highlights efficient allocation frontiers
+and seed regimes.
 
 **Attributes**:
 
@@ -473,32 +531,38 @@ def plot(cc,
 
 Plots the loss gradient and efficient frontier for resource allocation.
 
-This method visualizes the distribution and relationships between compute resources (FLOPs), model parameters, and data samples. It shows how these factors interact with the loss function and highlights efficient allocation frontiers and seed regimes.
+This method visualizes the distribution and relationships between compute resources
+(FLOPs), model parameters, and data samples. It shows how these factors interact
+with the loss function and highlights efficient allocation frontiers and seed regimes.
 
-**Example output**: ![](../examples/efficientcube-1e15_1e16/parametric_fit.png)
+**Example output**:
+![](https://github.com/kyo-takano/chinchilla/blob/master/docs/imgs/parametric_fit.png)
 
 **Arguments**:
 
 - `cc` - A Chinchilla instance with a Database of training runs and scaling law parameters if estimated.
 - `next_point` _dict[str, float] | None_ - The next point to be plotted, if any.
-- `fitted` _bool_ - Whether to plot the scaling law gradient or only raw data points. If the loss predictor is not fitted, falls back to False.
+- `fitted` _bool_ - Whether to plot the scaling law gradient or only raw data points.
+  If the loss predictor is not fitted, falls back to False.
 - `img_name` _str_ - The name of the image file to save the plot as.
 - `cmap_name` _str_ - The name of the colormap to be used for plotting.
 - `simulation` _bool_ - Whether the plot is for a simulation.
 
-### `LBFGS`
+### `optim`
 
 ```python
-def LBFGS(y_pred: np.ndarray,
+def optim(y_pred: np.ndarray,
           y_true: np.ndarray,
           C: np.ndarray | None = None,
           simulation: bool = False,
-          img_name: str = "LBFGS") -> None
+          img_name: str = "optim") -> None
 ```
 
-Plots the results of L-BFGS optimization, including the loss history and prediction accuracy. This method visualizes the predicted values versus the true labels and the error distribution.
+Plots the results of optimization, including the loss history and prediction accuracy.
+This method visualizes the predicted values versus the true labels and the error distribution.
 
-**Example output**: ![](../examples/efficientcube-1e15_1e16/LBFGS.png)
+**Example output**:
+![](https://github.com/kyo-takano/chinchilla/blob/master/docs/imgs/optim--asymmetric.jpg)
 
 **Arguments**:
 
@@ -508,7 +572,17 @@ Plots the results of L-BFGS optimization, including the loss history and predict
 - `simulation` _bool, optional_ - Whether the plot is for a simulation.
 - `img_name` _str, optional_ - The name of the image file to save the plot as.
 
-# `chinchilla.simulator.Simulator`
+### `LBFGS`
+
+```python
+def LBFGS(*args, **kwargs)
+```
+
+Deprecated function. Please use optim() instead.
+
+# `chinchilla.simulator`
+
+## `Simulator`
 
 ```python
 class Simulator(Chinchilla)
@@ -516,7 +590,9 @@ class Simulator(Chinchilla)
 
 Simulates the scaling law estimation with `Chinchilla`, allowing you to understand its behaviors.
 
-Inheriting and extending the `Chinchilla` class with the capacity to simulate seeding and scaling in a hypothetical task, `Simulator` models how factors like `Chinchilla` configuration, number of seeds, scaling factor, the noisiness of losses, etc. would confound to affect the stability and the performance of scaling law estimation.
+Inheriting and extending the `Chinchilla` class with the capacity to simulate seeding and scaling in a hypothetical task,
+`Simulator` models how factors like `Chinchilla` configuration, number of seeds, scaling factor, the noisiness of losses, etc.
+would confound to affect the stability and the performance of scaling law estimation.
 
 **Attributes**:
 
@@ -586,7 +662,8 @@ Simulate the compute-scaling on a hypothetical deep learning task with some nois
 - `num_scaling_steps` _int_ - The number of scaling steps to simulate.
 - `scaling_factor` _float | None, optional_ - The scaling factor to be used in the simulation.
 - `target_params` _dict[str, float]_ - A dictionary of target parameters for the simulation.
-- `noise_generator` _Iterator | tuple[Callable, tuple[float, ...]] | None, optional_ - A callable or iterator that generates noise to be added to the loss. Defaults to `(random.expovariate(10) for _ in iter(int, 1))`, which generates an exponential distribution averaging at $0.100$.
+- `noise_generator` _Iterator | tuple[Callable, tuple[float, ...]] | None, optional_ - A callable or iterator that generates noise to be added to the loss.
+  Defaults to `(random.expovariate(10) for _ in iter(int, 1))`, which generates an exponential distribution averaging at $0.100$.
 
 **Raises**:
 
@@ -606,7 +683,8 @@ def search_model_config(
         use_cache: bool = False) -> tuple[dict[str, float], float]
 ```
 
-Finds the model configuration that is closest to a given target number of parameters, based on the provided hyperparameter grid and size estimator.
+Finds the model configuration that is closest to a given target number of parameters,
+based on the provided hyperparameter grid and size estimator.
 
 > **Example Usage**:
 >
@@ -634,11 +712,12 @@ Finds the model configuration that is closest to a given target number of parame
 
 **Returns**:
 
-A tuple containing the closest model configuration and its estimated size.
+  A tuple containing the closest model configuration and its estimated size.
 
 **Notes**:
 
-Although very efficient, you should set `use_cache` to True only when `hyperparam_grid` is guaranteed to be consistent; thus, it is disabled by default except for Simulator (x16 faster).
+  Although very efficient, you should set `use_cache` to True only when `hyperparam_grid` is guaranteed to be
+  consistent; thus, it is disabled by default except for Simulator (x16 faster).
 
 ### `is_between`
 
@@ -656,78 +735,7 @@ Checks if a value is within the given inclusive bounds.
 
 **Returns**:
 
-bool | np.ndarray: NumPy array: A boolean or an NumPy array of booleans indicating whether the value is between the bounds.
-
-# `chinchilla._metrics`
-
-A few loss & weight functions you can use on demand.
-
-### `asymmetric_mae`
-
-```python
-def asymmetric_mae(y_true: np.ndarray,
-                   y_pred: np.ndarray,
-                   w: float = 1e1) -> np.ndarray
-```
-
-Asymmetric Mean Absolute Error loss function.
-
-### `huber`
-
-```python
-def huber(y_true: np.ndarray,
-          y_pred: np.ndarray,
-          delta: float = 1.0) -> np.ndarray
-```
-
-Huber loss function.
-
-### `log_huber`
-
-```python
-def log_huber(y_true: np.ndarray,
-              y_pred: np.ndarray,
-              delta: float = 1.0) -> np.ndarray
-```
-
-The original loss function used in the Chinchilla paper
-
-### `mae`
-
-```python
-def mae(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray
-```
-
-Mean Absolute Error loss function.
-
-### `mse`
-
-```python
-def mse(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray
-```
-
-Mean Squared Error loss function.
-
-# `chinchilla._logger`
-
-Contains a utility function `get_logger`. This module also filters out noisy debug messages from `matplotlib` and suppresses redundant warnings from `numpy` and `matplotlib`.
-
-### `get_logger`
-
-```python
-def get_logger(level: int | str, name: str) -> logging.Logger
-```
-
-Sets up a logger with the specified log level. This logger uses RichHandler for `rich` formatted logging output to the console.
-
-**Arguments**:
-
-- `level` _int | str_ - Logging level, e.g., 20 or logging.INFO, 30 or logging.WARNING.
-- `name` _str, optional_ - The name of the logger.
-
-**Returns**:
-
-- `logging.Logger` - Configured logger instance.
+  bool | np.ndarray: NumPy array: A boolean or an NumPy array of booleans indicating whether the value is between the bounds.
 
 # `chinchilla._validator`
 
@@ -743,7 +751,9 @@ Validates a grid of initialization for scaling law (/loss predictor) parameters.
 
 **Attributes**:
 
-E or e: Tuple of floats representing initial values for the E parameter or its log form. A or a: Tuple of floats representing initial values for the A parameter or its log form. B or b: Tuple of floats representing initial values for the B parameter or its log form.
+  E or e: Tuple of floats representing initial values for the E parameter or its log form.
+  A or a: Tuple of floats representing initial values for the A parameter or its log form.
+  B or b: Tuple of floats representing initial values for the B parameter or its log form.
 
 - `alpha` - Tuple of floats representing initial values for the alpha parameter.
 - `beta` - Tuple of floats representing initial values for the beta parameter.
@@ -852,3 +862,76 @@ def check_noise_generator(cls, v)
 ```
 
 Validates the noise generator, ensuring it is an iterator or None.
+
+# `chinchilla._logger`
+
+Contains a utility function `get_logger`. This module also filters out noisy debug messages
+from `matplotlib` and suppresses redundant warnings from `numpy` and `matplotlib`.
+
+### `get_logger`
+
+```python
+def get_logger(level: int | str, name: str) -> logging.Logger
+```
+
+Sets up a logger with the specified log level.
+This logger uses RichHandler for `rich` formatted logging output to the console.
+
+**Arguments**:
+
+- `level` _int | str_ - Logging level, e.g., 20 or logging.INFO, 30 or logging.WARNING.
+- `name` _str, optional_ - The name of the logger.
+
+**Returns**:
+
+- `logging.Logger` - Configured logger instance.
+
+# `chinchilla._metrics`
+
+A few loss & weight functions you can use on demand.
+
+### `asymmetric_mae`
+
+```python
+def asymmetric_mae(y_true: np.ndarray,
+                   y_pred: np.ndarray,
+                   w: float = 1e1) -> np.ndarray
+```
+
+Asymmetric Mean Absolute Error loss function.
+
+### `huber`
+
+```python
+def huber(y_true: np.ndarray,
+          y_pred: np.ndarray,
+          delta: float = 1.0) -> np.ndarray
+```
+
+Huber loss function.
+
+### `log_huber`
+
+```python
+def log_huber(y_true: np.ndarray,
+              y_pred: np.ndarray,
+              delta: float = 1.0) -> np.ndarray
+```
+
+The original loss function used in the Chinchilla paper
+
+### `mae`
+
+```python
+def mae(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray
+```
+
+Mean Absolute Error loss function.
+
+### `mse`
+
+```python
+def mse(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray
+```
+
+Mean Squared Error loss function.

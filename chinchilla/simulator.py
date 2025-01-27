@@ -134,7 +134,6 @@ class Simulator(Chinchilla):
     def _pseudo_training_run(self) -> None:
         """Perform a pseudo training run and record the results in the database."""
         (N, D), _ = self.step(simulation=True)
-
         # Get a *hypothetical* lowest loss you can achieve with N and D
         pseudo_loss = sum(
             [

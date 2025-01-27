@@ -55,6 +55,8 @@ class Database:
             )
             # We define an empty database for when referencing the number of existing data points
             self.df = pd.DataFrame([], columns=columns)
+        # numbers like FLOPS can be too large to be represented as int, which in turn gets interpreted as a string object
+        self.df.C = self.df.C.astype(float)
 
     def append(self, **result: dict[str, float]) -> None:
         """
@@ -77,7 +79,6 @@ class Database:
             result["C"] = 6 * result["N"] * result["D"]
         for k in ["C", "N", "D"]:
             result[k] = round(result[k])  # This helps prevent scientific notation of large values
-
         # Collect all columns added by the user
         cols_additional = [c for c in result.keys() if c not in self.df.columns]
         record = pd.DataFrame([result], columns=self.df.columns.tolist() + cols_additional)

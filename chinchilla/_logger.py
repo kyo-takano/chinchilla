@@ -1,5 +1,5 @@
 """
-Contains a utility function `get_logger`. This module also filters out noisy debug messages 
+Contains a utility function `get_logger`. This module also filters out noisy debug messages
 from `matplotlib` and suppresses redundant warnings from `numpy` and `matplotlib`.
 """
 
