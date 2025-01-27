@@ -1,6 +1,6 @@
 # `chinchilla`
 
-![Parametric fit on LLM training runs](docs/imgs/parametric_fit.png)
+![Parametric fit on LLM training runs]((https://raw.githubusercontent.com/kyo-takano/chinchilla/master/docs/imgs/parametric_fit.png))
 
 `chinchilla` is a research toolkit designed to estimate scaling laws & train compute-optimal models for various deep learning tasks.
 
