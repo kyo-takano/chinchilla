@@ -8,7 +8,7 @@ These changes aim to improve the theoretical consistency as well as the performa
 The loss predictor $L(N,\ D\ |\ A,\ B,\ \alpha,\ \beta)$ aims to capture **_the lower bound of_** the loss achievable with a given allocation $(N, D)$.
 However, the original approach utilizes a symmetric loss function (log-Huber) to predict the **_expected_** (mean) loss and does not adequately account for the distribution of errors.
 
-![Optimization with log-Huber](./imgs/optim--symmetric.png)
+![Optimization with log-Huber](imgs/optim--symmetric.jpg)
 
 Modeling-wise, the additional loss attributed to the inherent incompleteness of a training setup---which we shall call **a noise term**---should be more exponentially distributed rather than normally.
 If we comply with the modelling and assume the errors to be positive and  asymmetrically biased to 0, losses in the right tail of such a distribution would have extensive effects on fitting the loss predictor when using a symmetric function like Huber.
@@ -27,7 +27,7 @@ y - \hat{y},& \text{if } y - \hat{y} > 0\\
 
 This modification more accurately fits the loss predictor to **_the lower bound of_** achievable losses.
 
-![Optimization with asymmetric MAE](./imgs/optim--asymmetric.png)
+![Optimization with asymmetric MAE](./imgs/optim--asymmetric.jpg)
 
 Nonetheless, you are free to stick to the original log-Huber or use your own `loss_fn`.
 
@@ -53,4 +53,4 @@ I would personally suggest that you don't log-scale $E$, but it doesn't really m
 
 I have tested the temporal performance of fdifferent algorithms (including those not shown here) and **BFGS just works best**, regardness of how good the initial parameter grid is.
 
-![algorithmic performance](./imgs/algorithm.init-original.png)
+![algorithmic performance](./imgs/algorithm.comparison.png)
